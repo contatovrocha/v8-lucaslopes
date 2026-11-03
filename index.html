@@ -660,7 +660,7 @@ modal.addEventListener('pointermove',e=>{if(!ok.classList.contains('on'))return;
 $('#vid').addEventListener('click',()=>{VIDEO_URL&&window.open(VIDEO_URL,'_blank','noopener')});
 
 /* trilha: Cânone de Pachelbel (domínio público) em piano e violino sintetizados, volume baixo */
-const Music=(()=>{const VOL=.14,SEC=2.2;let master=null,timer=null,next=0,step=0,on=false;
+const Music=(()=>{const VOL=.06,SEC=2.2;let master=null,timer=null,next=0,step=0,on=false;
  const CH=[[38,57,62,66],[33,57,61,64],[35,59,62,66],[30,57,61,66],[31,59,62,67],[26,57,62,66],[31,59,62,67],[33,57,61,64]];
  const MEL=[78,76,74,73,71,69,71,73],hz=m=>440*Math.pow(2,(m-69)/12);
  function init(){master=AC.createGain();master.gain.value=0;
@@ -679,13 +679,19 @@ const Music=(()=>{const VOL=.14,SEC=2.2;let master=null,timer=null,next=0,step=0
   [c[1],c[2],c[3],c[2]].forEach((m,k)=>piano(m,t+k*b,.24,SEC*.9));if(i>=8)violin(MEL[i%8],t,.11,SEC)}
  function sched(){while(next<AC.currentTime+.8){play(step,next);next+=SEC;step=(step+1)%64||8}}
  return{get on(){return on},start(){if(!AC||AC.state!=='running'||on)return;if(!master)init();on=true;next=AC.currentTime+.15;sched();timer=setInterval(sched,200);
-   master.gain.cancelScheduledValues(AC.currentTime);master.gain.setTargetAtTime(VOL,AC.currentTime,3)},
+   master.gain.cancelScheduledValues(AC.currentTime);master.gain.setTargetAtTime(VOL,AC.currentTime,4)},
   stop(){if(!on)return;on=false;master.gain.cancelScheduledValues(AC.currentTime);master.gain.setTargetAtTime(0,AC.currentTime,.3);clearInterval(timer);timer=null}}})();
 (function(){const btn=$('#snd');let muted=false;try{muted=localStorage.getItem('legado_mute')==='1'}catch(_){}
  const ui=()=>{btn.classList.toggle('on',Music.on);btn.setAttribute('aria-pressed',String(Music.on));btn.setAttribute('aria-label',Music.on?'Desligar música':'Ativar música')};
- const go=()=>{unlockAudio();if(!AC)return;AC.resume().then(()=>{Music.start();ui()}).catch(()=>{})};
- const first=e=>{if(e&&e.target&&e.target.closest&&e.target.closest('#snd'))return;['pointerdown','touchstart','keydown','wheel'].forEach(ev=>removeEventListener(ev,first));if(!muted)go()};
- ['pointerdown','touchstart','keydown','wheel'].forEach(ev=>addEventListener(ev,first,{passive:true}));
+ const go=()=>{unlockAudio();if(!AC)return;
+  /* iOS só libera o áudio dentro do próprio gesto: toca um buffer mudo na hora do toque */
+  try{const s=AC.createBufferSource();s.buffer=AC.createBuffer(1,1,22050);s.connect(AC.destination);s.start(0)}catch(_){}
+  AC.resume().then(()=>{Music.start();ui();if(Music.on)detach()}).catch(()=>{})};
+ /* continua ouvindo até o som de fato começar: no iPhone, nem todo toque libera o áudio */
+ const EVS=['pointerdown','touchstart','touchend','click','keydown','wheel'];
+ const first=e=>{if(e&&e.target&&e.target.closest&&e.target.closest('#snd'))return;if(muted||Music.on)return detach();go()};
+ const detach=()=>EVS.forEach(ev=>removeEventListener(ev,first,true));
+ EVS.forEach(ev=>addEventListener(ev,first,{passive:true,capture:true}));
  btn.addEventListener('click',e=>{e.stopPropagation();if(Music.on){Music.stop();muted=true}else{muted=false;go()}try{localStorage.setItem('legado_mute',muted?'1':'0')}catch(_){}ui()});
  if(!muted){try{unlockAudio();AC&&AC.resume().then(()=>{if(AC.state==='running'){Music.start();ui()}}).catch(()=>{})}catch(_){}}
  setTimeout(()=>btn.classList.add('ready'),3000);
